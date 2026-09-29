@@ -57,6 +57,8 @@
 #include "platform_defaults.h"
 
 #define GYRO_ADD_RAW_AND_VARIANCE_LOG_VALUES
+#define ACCEL_ADD_RAW_LOG_VALUES
+#define IMU_ADD_TIMESTAMP_LOG_VALUE
 
 #define SENSORS_READ_RATE_HZ            1000
 #define SENSORS_STARTUP_TIME_MS         1000
@@ -123,6 +125,9 @@ static StaticSemaphore_t dataReadyBuffer;
 static bool isInit = false;
 static sensorData_t sensorData;
 static volatile uint64_t imuIntTimestamp;
+#ifdef IMU_ADD_TIMESTAMP_LOG_VALUE
+static uint32_t imuTimestampUs;  // Lower 32 bits of imuIntTimestamp for the sample in gyroRaw/accelRaw
+#endif
 
 static Axis3i16 gyroRaw;
 static Axis3i16 accelRaw;
@@ -311,6 +316,9 @@ static void sensorsTask(void *param)
       /* get data from chosen sensors */
       sensorsGyroGet(&gyroRaw);
       sensorsAccelGet(&accelRaw);
+#ifdef IMU_ADD_TIMESTAMP_LOG_VALUE
+      imuTimestampUs = (uint32_t)sensorData.interruptTimestamp;
+#endif
 
       /* calibrate if necessary */
 #ifdef GYRO_BIAS_LIGHT_WEIGHT
@@ -1014,6 +1022,20 @@ LOG_ADD(LOG_FLOAT, xVariance, &gyroBiasRunning.variance.x)
 LOG_ADD(LOG_FLOAT, yVariance, &gyroBiasRunning.variance.y)
 LOG_ADD(LOG_FLOAT, zVariance, &gyroBiasRunning.variance.z)
 LOG_GROUP_STOP(gyro)
+#endif
+
+#ifdef ACCEL_ADD_RAW_LOG_VALUES
+LOG_GROUP_START(accel)
+LOG_ADD(LOG_INT16, xRaw, &accelRaw.x)
+LOG_ADD(LOG_INT16, yRaw, &accelRaw.y)
+LOG_ADD(LOG_INT16, zRaw, &accelRaw.z)
+LOG_GROUP_STOP(accel)
+#endif
+
+#ifdef IMU_ADD_TIMESTAMP_LOG_VALUE
+LOG_GROUP_START(imu)
+LOG_ADD(LOG_UINT32, tsUs, &imuTimestampUs)
+LOG_GROUP_STOP(imu)
 #endif
 
 PARAM_GROUP_START(imu_sensors)
