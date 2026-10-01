@@ -28,6 +28,13 @@
 
 #include "sensors.h"
 
+// One sample as the sensor task reads it: sensor frame, no bias, scale or filter applied
+typedef struct imuRawSample_s {
+  uint32_t timestampUs;     // lower 32 bits of the data-ready interrupt time, usecTimestamp()
+  Axis3i16 acc;             // counts, +-24 G range
+  Axis3i16 gyro;            // counts, +-2000 deg/s range
+} imuRawSample_t;
+
 void sensorsBmi088Bmp3xxInit_I2C(void);
 void sensorsBmi088Bmp3xxInit_SPI(void);
 bool sensorsBmi088Bmp3xxTest(void);
@@ -39,6 +46,8 @@ bool sensorsBmi088Bmp3xxReadGyro(Axis3f *gyro);
 bool sensorsBmi088Bmp3xxReadAcc(Axis3f *acc);
 bool sensorsBmi088Bmp3xxReadMag(Axis3f *mag);
 bool sensorsBmi088Bmp3xxReadBaro(baro_t *baro);
+void sensorsBmi088Bmp3xxEnableImuRaw(bool enable);
+bool sensorsBmi088Bmp3xxReadImuRaw(imuRawSample_t *sample, uint32_t timeout);
 void sensorsBmi088Bmp3xxSetAccMode(accModes accMode);
 void sensorsBmi088Bmp3xxDataAvailableCallback(void);
 

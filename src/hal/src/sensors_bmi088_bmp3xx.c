@@ -59,6 +59,7 @@
 #define GYRO_ADD_RAW_AND_VARIANCE_LOG_VALUES
 #define ACCEL_ADD_RAW_LOG_VALUES
 #define IMU_ADD_TIMESTAMP_LOG_VALUE
+#define IMU_ADD_RAW_SAMPLE_QUEUE
 
 #define SENSORS_READ_RATE_HZ            1000
 #define SENSORS_STARTUP_TIME_MS         1000
@@ -116,6 +117,15 @@ static xQueueHandle magnetometerDataQueue;
 STATIC_MEM_QUEUE_ALLOC(magnetometerDataQueue, 1, sizeof(Axis3f));
 static xQueueHandle barometerDataQueue;
 STATIC_MEM_QUEUE_ALLOC(barometerDataQueue, 1, sizeof(baro_t));
+#ifdef IMU_ADD_RAW_SAMPLE_QUEUE
+// Every raw sample, in order, for a consumer that must not miss any (an app streaming them).
+// Filled only while enabled; a full queue drops the new sample and counts it.
+#define IMU_RAW_QUEUE_LENGTH 32
+static xQueueHandle imuRawDataQueue;
+STATIC_MEM_QUEUE_ALLOC(imuRawDataQueue, IMU_RAW_QUEUE_LENGTH, sizeof(imuRawSample_t));
+static bool imuRawEnabled = false;
+static uint32_t imuRawDropped;
+#endif
 
 static xSemaphoreHandle sensorsDataReady;
 static StaticSemaphore_t sensorsDataReadyBuffer;
@@ -271,6 +281,24 @@ bool sensorsBmi088Bmp3xxReadAcc(Axis3f *acc)
   return (pdTRUE == xQueueReceive(accelerometerDataQueue, acc, 0));
 }
 
+#ifdef IMU_ADD_RAW_SAMPLE_QUEUE
+void sensorsBmi088Bmp3xxEnableImuRaw(bool enable)
+{
+  if (enable && !imuRawEnabled)
+  {
+    // Start from the next sample, with a fresh drop count
+    xQueueReset(imuRawDataQueue);
+    imuRawDropped = 0;
+  }
+  imuRawEnabled = enable;
+}
+
+bool sensorsBmi088Bmp3xxReadImuRaw(imuRawSample_t *sample, uint32_t timeout)
+{
+  return (pdTRUE == xQueueReceive(imuRawDataQueue, sample, timeout));
+}
+#endif
+
 bool sensorsBmi088Bmp3xxReadMag(Axis3f *mag)
 {
   return (pdTRUE == xQueueReceive(magnetometerDataQueue, mag, 0));
@@ -318,6 +346,16 @@ static void sensorsTask(void *param)
       sensorsAccelGet(&accelRaw);
 #ifdef IMU_ADD_TIMESTAMP_LOG_VALUE
       imuTimestampUs = (uint32_t)sensorData.interruptTimestamp;
+#endif
+#ifdef IMU_ADD_RAW_SAMPLE_QUEUE
+      if (imuRawEnabled)
+      {
+        imuRawSample_t rawSample = {(uint32_t)sensorData.interruptTimestamp, accelRaw, gyroRaw};
+        if (xQueueSend(imuRawDataQueue, &rawSample, 0) != pdTRUE)
+        {
+          imuRawDropped++;
+        }
+      }
 #endif
 
       /* calibrate if necessary */
@@ -570,6 +608,9 @@ static void sensorsTaskInit(void)
   gyroDataQueue = STATIC_MEM_QUEUE_CREATE(gyroDataQueue);
   magnetometerDataQueue = STATIC_MEM_QUEUE_CREATE(magnetometerDataQueue);
   barometerDataQueue = STATIC_MEM_QUEUE_CREATE(barometerDataQueue);
+#ifdef IMU_ADD_RAW_SAMPLE_QUEUE
+  imuRawDataQueue = STATIC_MEM_QUEUE_CREATE(imuRawDataQueue);
+#endif
 
   STATIC_MEM_TASK_CREATE(sensorsTask, sensorsTask, SENSORS_TASK_NAME, NULL, SENSORS_TASK_PRI);
 }
@@ -1035,6 +1076,9 @@ LOG_GROUP_STOP(accel)
 #ifdef IMU_ADD_TIMESTAMP_LOG_VALUE
 LOG_GROUP_START(imu)
 LOG_ADD(LOG_UINT32, tsUs, &imuTimestampUs)
+#ifdef IMU_ADD_RAW_SAMPLE_QUEUE
+LOG_ADD(LOG_UINT32, rawDrop, &imuRawDropped)
+#endif
 LOG_GROUP_STOP(imu)
 #endif
 
