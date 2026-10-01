@@ -38,6 +38,7 @@
 %include "collision_avoidance.h"
 %include "controller_pid.h"
 %include "imu_types.h"
+%include "filter.h"
 %include "controller_mellinger.h"
 %include "controller_brescianini.h"
 %include "controller_lee.h"
